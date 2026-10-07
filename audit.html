@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AcxiomCRM - Audit Logs</title>
+</head>
+<body style="font-family: sans-serif; margin: 20px;">
+  <div id="navbar"></div>
+
+  <h2>System Audit Logs (Admin Only)</h2>
+  <hr>
+
+  <div style="margin-bottom: 20px;">
+    <label>Filter Search:</label>
+    <input type="text" id="audit-search" placeholder="Search by email, action, entity..." style="width: 300px;">
+    <button onclick="loadAuditLogs()">Search</button>
+  </div>
+
+  <table border="1" cellpadding="6" cellspacing="0" style="width: 100%; border-collapse: collapse;">
+    <thead>
+      <tr style="background: #e0e0e0;">
+        <th>ID</th>
+        <th>Timestamp</th>
+        <th>User Email</th>
+        <th>Action</th>
+        <th>Entity</th>
+        <th>Record ID</th>
+        <th>New Value / Details</th>
+        <th>IP Address</th>
+      </tr>
+    </thead>
+    <tbody id="audit-tbody">
+      <tr><td colspan="8">Loading audit logs...</td></tr>
+    </tbody>
+  </table>
+
+  <script src="app.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      const u = await checkSession();
+      if (u && u.role !== 'Admin') {
+        alert('Access denied. Admin role required.');
+        window.location.href = 'dashboard.html';
+        return;
+      }
+      loadAuditLogs();
+    });
+
+    async function loadAuditLogs() {
+      const search = document.getElementById('audit-search').value.trim();
+      const url = search ? `/api/audit?search=${encodeURIComponent(search)}` : '/api/audit';
+
+      try {
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const logs = await res.json();
+
+        const tbody = document.getElementById('audit-tbody');
+        if (logs.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="8">No audit logs found.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = logs.map(l => `
+          <tr>
+            <td>${l.id}</td>
+            <td>${escapeHtml(l.created_date)}</td>
+            <td>${escapeHtml(l.user_email || 'System')}</td>
+            <td><strong style="color:#0056b3;">${escapeHtml(l.action)}</strong></td>
+            <td>${escapeHtml(l.entity_name)}</td>
+            <td>${l.record_id || '-'}</td>
+            <td style="font-size: 0.85em; font-family: monospace; max-width: 400px; word-break: break-all;">
+              ${escapeHtml(l.new_value || '')}
+            </td>
+            <td>${escapeHtml(l.ip_address || '127.0.0.1')}</td>
+          </tr>
+        `).join('');
+      } catch (err) {}
+    }
+  </script>
+</body>
+</html>

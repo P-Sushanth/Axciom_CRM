@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AcxiomCRM - Follow-Up Management</title>
+</head>
+<body style="font-family: sans-serif; margin: 20px;">
+  <div id="navbar"></div>
+
+  <h2>Follow-Up Management</h2>
+  <hr>
+
+  <div id="page-alert" style="display:none;"></div>
+
+  <div style="display: flex; gap: 30px;">
+    <div style="border: 1px solid #ccc; padding: 20px; width: 340px; height: fit-content;">
+      <h3 id="form-title">Create New Follow-Up</h3>
+      <div id="flw-form-alert" style="display:none;"></div>
+      <form id="flw-form" onsubmit="saveFollowup(event)">
+        <input type="hidden" id="flw-id">
+        <p>
+          <label>Subject *:</label><br>
+          <input type="text" id="flw-subject" style="width: 100%;">
+        </p>
+        <p>
+          <label>Follow-Up Date * (Cannot be before today):</label><br>
+          <input type="date" id="flw-date" style="width: 100%;">
+        </p>
+        <p>
+          <label>Activity Type:</label><br>
+          <select id="flw-type" style="width: 100%;">
+            <option value="Call">Call</option>
+            <option value="Email">Email</option>
+            <option value="Meeting">Meeting</option>
+            <option value="Task">Task</option>
+          </select>
+        </p>
+        <p>
+          <label>Status:</label><br>
+          <select id="flw-status" style="width: 100%;">
+            <option value="Planned">Planned</option>
+            <option value="Completed">Completed</option>
+            <option value="Missed">Missed</option>
+            <option value="Cancelled">Cancelled</option>
+          </select>
+        </p>
+        <p>
+          <label>Related Entity Type:</label><br>
+          <select id="flw-entity-type" style="width: 100%;">
+            <option value="Customer">Customer</option>
+            <option value="Lead">Lead</option>
+            <option value="Opportunity">Opportunity</option>
+          </select>
+        </p>
+        <p>
+          <label>Notes:</label><br>
+          <textarea id="flw-notes" rows="2" style="width: 100%;"></textarea>
+        </p>
+        <button type="submit" id="save-btn">Save Follow-Up</button>
+        <button type="button" onclick="resetForm()">Cancel</button>
+      </form>
+    </div>
+
+    <div style="flex-grow: 1;">
+      <h3>Follow-Up List</h3>
+      <table border="1" cellpadding="6" cellspacing="0" style="width: 100%; border-collapse: collapse;">
+        <thead>
+          <tr style="background: #e0e0e0;">
+            <th>ID</th>
+            <th>Subject</th>
+            <th>Date</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Assigned User</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="flw-tbody">
+          <tr><td colspan="7">Loading follow-ups...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      await checkSession();
+      loadFollowups();
+    });
+
+    async function loadFollowups() {
+      try {
+        const res = await fetch('/api/followups');
+        if (!res.ok) return;
+        const followups = await res.json();
+
+        const tbody = document.getElementById('flw-tbody');
+        if (followups.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7">No follow-ups found.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = followups.map(f => `
+          <tr>
+            <td>${f.id}</td>
+            <td><strong>${escapeHtml(f.subject)}</strong></td>
+            <td>${escapeHtml(f.followup_date)}</td>
+            <td>${escapeHtml(f.type)}</td>
+            <td>${escapeHtml(f.status)}</td>
+            <td>${escapeHtml(f.assigned_user_name || 'N/A')}</td>
+            <td>
+              <button onclick="editFollowup(${f.id})">Edit</button>
+              <button onclick="deleteFollowup(${f.id})">Delete</button>
+            </td>
+          </tr>
+        `).join('');
+      } catch (err) {}
+    }
+
+    function validateFollowupForm() {
+      clearAlert('flw-form-alert');
+      const subject = document.getElementById('flw-subject').value.trim();
+      const flwDate = document.getElementById('flw-date').value;
+      const status = document.getElementById('flw-status').value;
+
+      if (!subject) {
+        showAlert('flw-form-alert', 'Follow-Up subject is required.', true);
+        return false;
+      }
+
+      if (!flwDate) {
+        showAlert('flw-form-alert', 'Follow-Up date is required.', true);
+        return false;
+      }
+
+      const todayStr = new Date().toISOString().split('T')[0];
+      if (['Planned', 'New'].includes(status) && flwDate < todayStr) {
+        showAlert('flw-form-alert', 'Follow-up date cannot be earlier than today.', true);
+        return false;
+      }
+
+      return true;
+    }
+
+    async function saveFollowup(e) {
+      e.preventDefault();
+
+      if (!validateFollowupForm()) {
+        return;
+      }
+
+      const id = document.getElementById('flw-id').value;
+      const payload = {
+        subject: document.getElementById('flw-subject').value.trim(),
+        followup_date: document.getElementById('flw-date').value,
+        type: document.getElementById('flw-type').value,
+        status: document.getElementById('flw-status').value,
+        entity_type: document.getElementById('flw-entity-type').value,
+        entity_id: 1,
+        notes: document.getElementById('flw-notes').value.trim()
+      };
+
+      const url = id ? `/api/followups/${id}` : '/api/followups';
+      const method = id ? 'PUT' : 'POST';
+
+      try {
+        const res = await fetch(url, {
+          method: method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          showAlert('flw-form-alert', data.error || 'Failed to save follow-up', true);
+        } else {
+          showAlert('page-alert', data.message, false);
+          resetForm();
+          loadFollowups();
+        }
+      } catch (err) {
+        showAlert('flw-form-alert', 'Error saving follow-up', true);
+      }
+    }
+
+    async function editFollowup(id) {
+      clearAlert('flw-form-alert');
+      const res = await fetch('/api/followups');
+      if (!res.ok) return;
+      const list = await res.json();
+      const f = list.find(x => x.id === id);
+      if (!f) return;
+
+      document.getElementById('flw-id').value = f.id;
+      document.getElementById('flw-subject').value = f.subject;
+      document.getElementById('flw-date').value = f.followup_date;
+      document.getElementById('flw-type').value = f.type || 'Call';
+      document.getElementById('flw-status').value = f.status || 'Planned';
+      document.getElementById('flw-entity-type').value = f.entity_type || 'Customer';
+      document.getElementById('flw-notes').value = f.notes || '';
+
+      document.getElementById('form-title').innerText = `Edit Follow-Up #${f.id}`;
+      document.getElementById('save-btn').innerText = 'Update Follow-Up';
+    }
+
+    async function deleteFollowup(id) {
+      if (!confirm('Delete follow-up?')) return;
+      const res = await fetch(`/api/followups/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) {
+        showAlert('page-alert', data.error, true);
+      } else {
+        showAlert('page-alert', data.message, false);
+        loadFollowups();
+      }
+    }
+
+    function resetForm() {
+      document.getElementById('flw-form').reset();
+      document.getElementById('flw-id').value = '';
+      document.getElementById('form-title').innerText = 'Create New Follow-Up';
+      document.getElementById('save-btn').innerText = 'Save Follow-Up';
+      clearAlert('flw-form-alert');
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AcxiomCRM - User & Role Management</title>
+</head>
+<body style="font-family: sans-serif; margin: 20px;">
+  <div id="navbar"></div>
+
+  <h2>User & Role Administration (Admin Only)</h2>
+  <hr>
+
+  <div id="page-alert" style="display:none;"></div>
+
+  <div style="display: flex; gap: 30px;">
+    <div style="border: 1px solid #ccc; padding: 20px; width: 300px; height: fit-content;">
+      <h3>Create User</h3>
+      <div id="user-form-alert" style="display:none;"></div>
+      <form id="create-user-form" onsubmit="createUser(event)">
+        <p>
+          <label>Full Name *:</label><br>
+          <input type="text" id="usr-name" required style="width: 100%;">
+        </p>
+        <p>
+          <label>Email *:</label><br>
+          <input type="email" id="usr-email" required style="width: 100%;">
+        </p>
+        <p>
+          <label>Password * (min 6 chars):</label><br>
+          <input type="password" id="usr-password" minlength="6" required style="width: 100%;">
+        </p>
+        <p>
+          <label>Role *:</label><br>
+          <select id="usr-role" style="width: 100%;">
+            <option value="SalesExecutive">SalesExecutive</option>
+            <option value="Manager">Manager</option>
+            <option value="Admin">Admin</option>
+          </select>
+        </p>
+        <button type="submit">Create User</button>
+      </form>
+    </div>
+
+    <div style="flex-grow: 1;">
+      <h3>System Users</h3>
+      <table border="1" cellpadding="6" cellspacing="0" style="width: 100%; border-collapse: collapse;">
+        <thead>
+          <tr style="background: #e0e0e0;">
+            <th>ID</th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="users-tbody">
+          <tr><td colspan="6">Loading users...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      const u = await checkSession();
+      if (u && u.role !== 'Admin') {
+        alert('Access denied. Admin role required.');
+        window.location.href = 'dashboard.html';
+        return;
+      }
+      loadUsers();
+    });
+
+    async function loadUsers() {
+      try {
+        const res = await fetch('/api/users');
+        if (!res.ok) {
+          showAlert('page-alert', 'Failed to load users or unauthorized', true);
+          return;
+        }
+        const users = await res.json();
+
+        const tbody = document.getElementById('users-tbody');
+        tbody.innerHTML = users.map(u => `
+          <tr>
+            <td>${u.id}</td>
+            <td><strong>${escapeHtml(u.name)}</strong></td>
+            <td>${escapeHtml(u.email)}</td>
+            <td>
+              <select onchange="updateRole(${u.id}, this.value)">
+                <option value="SalesExecutive" ${u.role === 'SalesExecutive' ? 'selected' : ''}>SalesExecutive</option>
+                <option value="Manager" ${u.role === 'Manager' ? 'selected' : ''}>Manager</option>
+                <option value="Admin" ${u.role === 'Admin' ? 'selected' : ''}>Admin</option>
+              </select>
+            </td>
+            <td>
+              <span style="color: ${u.is_active ? 'green' : 'red'}; font-weight: bold;">
+                ${u.is_active ? 'Active' : 'Inactive'}
+              </span>
+            </td>
+            <td>
+              <button onclick="toggleStatus(${u.id}, ${u.is_active ? 0 : 1})">
+                ${u.is_active ? 'Deactivate' : 'Activate'}
+              </button>
+              <button onclick="resetUserPassword(${u.id})">Reset Password</button>
+            </td>
+          </tr>
+        `).join('');
+      } catch (err) {}
+    }
+
+    async function createUser(e) {
+      e.preventDefault();
+      clearAlert('user-form-alert');
+
+      const name = document.getElementById('usr-name').value;
+      const email = document.getElementById('usr-email').value;
+      const password = document.getElementById('usr-password').value;
+      const role = document.getElementById('usr-role').value;
+
+      try {
+        const res = await fetch('/api/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email, password, role })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showAlert('user-form-alert', data.error || 'Failed to create user', true);
+        } else {
+          showAlert('page-alert', data.message, false);
+          document.getElementById('create-user-form').reset();
+          loadUsers();
+        }
+      } catch (err) {
+        showAlert('user-form-alert', 'Error creating user', true);
+      }
+    }
+
+    async function updateRole(userId, newRole) {
+      clearAlert('page-alert');
+      const res = await fetch(`/api/users/${userId}/role`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: newRole })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showAlert('page-alert', data.error, true);
+      } else {
+        showAlert('page-alert', data.message, false);
+        loadUsers();
+      }
+    }
+
+    async function toggleStatus(userId, targetStatus) {
+      clearAlert('page-alert');
+      const res = await fetch(`/api/users/${userId}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: targetStatus })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showAlert('page-alert', data.error, true);
+      } else {
+        showAlert('page-alert', data.message, false);
+        loadUsers();
+      }
+    }
+
+    async function resetUserPassword(userId) {
+      const newPwd = prompt('Enter new password for user (min 6 characters):');
+      if (!newPwd) return;
+      if (newPwd.length < 6) {
+        alert('Password must be at least 6 characters.');
+        return;
+      }
+      clearAlert('page-alert');
+
+      const res = await fetch(`/api/users/${userId}/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ new_password: newPwd })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showAlert('page-alert', data.error, true);
+      } else {
+        showAlert('page-alert', data.message, false);
+      }
+    }
+  </script>
+</body>
+</html>

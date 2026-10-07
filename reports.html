@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AcxiomCRM - Reports</title>
+</head>
+<body style="font-family: sans-serif; margin: 20px;">
+  <div id="navbar"></div>
+
+  <h2>Team Pipeline & Analytics Reports</h2>
+  <hr>
+
+  <h3>1. Stage-Wise Pipeline Summary</h3>
+  <table border="1" cellpadding="6" cellspacing="0" style="width: 500px; border-collapse: collapse; margin-bottom: 30px;">
+    <thead>
+      <tr style="background: #e0e0e0;">
+        <th>Pipeline Stage</th>
+        <th>Opportunity Count</th>
+        <th>Total Amount ($)</th>
+      </tr>
+    </thead>
+    <tbody id="stage-report-tbody">
+      <tr><td colspan="3">Loading stage summary...</td></tr>
+    </tbody>
+  </table>
+
+  <h3>2. Sales Representative Performance Summary</h3>
+  <table border="1" cellpadding="6" cellspacing="0" style="width: 500px; border-collapse: collapse;">
+    <thead>
+      <tr style="background: #e0e0e0;">
+        <th>Sales Representative</th>
+        <th>Active Opportunities</th>
+        <th>Pipeline Value ($)</th>
+      </tr>
+    </thead>
+    <tbody id="owner-report-tbody">
+      <tr><td colspan="3">Loading owner summary...</td></tr>
+    </tbody>
+  </table>
+
+  <script src="app.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      const u = await checkSession();
+      if (u && u.role === 'SalesExecutive') {
+        alert('Access denied. Reports are restricted to Manager & Admin.');
+        window.location.href = 'dashboard.html';
+        return;
+      }
+      loadReports();
+    });
+
+    async function loadReports() {
+      try {
+        const res = await fetch('/api/reports/pipeline');
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const stageTbody = document.getElementById('stage-report-tbody');
+        stageTbody.innerHTML = data.pipelineByStage.map(s => `
+          <tr>
+            <td><strong>${escapeHtml(s.stage)}</strong></td>
+            <td>${s.opportunity_count}</td>
+            <td>$${Number(s.total_amount).toLocaleString()}</td>
+          </tr>
+        `).join('');
+
+        const ownerTbody = document.getElementById('owner-report-tbody');
+        ownerTbody.innerHTML = data.pipelineByOwner.map(o => `
+          <tr>
+            <td><strong>${escapeHtml(o.owner_name)}</strong></td>
+            <td>${o.opportunity_count}</td>
+            <td>$${Number(o.total_amount).toLocaleString()}</td>
+          </tr>
+        `).join('');
+      } catch (err) {}
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AcxiomCRM - Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body style="font-family: sans-serif; margin: 20px;">
+  <div id="navbar"></div>
+
+  <h2>CRM Dashboard</h2>
+  <hr>
+
+  <div style="display: flex; gap: 15px; margin-bottom: 30px; flex-wrap: wrap;">
+    <div style="border: 1px solid #ccc; padding: 15px; width: 180px; text-align: center;">
+      <h4 style="margin: 0 0 10px 0;">Total Customers</h4>
+      <span id="kpi-customers" style="font-size: 1.8em; font-weight: bold;">0</span>
+    </div>
+    <div style="border: 1px solid #ccc; padding: 15px; width: 180px; text-align: center;">
+      <h4 style="margin: 0 0 10px 0;">Open Leads</h4>
+      <span id="kpi-leads" style="font-size: 1.8em; font-weight: bold;">0</span>
+    </div>
+    <div style="border: 1px solid #ccc; padding: 15px; width: 180px; text-align: center;">
+      <h4 style="margin: 0 0 10px 0;">Open Opportunities</h4>
+      <span id="kpi-opportunities" style="font-size: 1.8em; font-weight: bold;">0</span>
+    </div>
+    <div style="border: 1px solid #ccc; padding: 15px; width: 180px; text-align: center;">
+      <h4 style="margin: 0 0 10px 0;">Pipeline Value</h4>
+      $<span id="kpi-pipeline" style="font-size: 1.8em; font-weight: bold;">0</span>
+    </div>
+    <div style="border: 1px solid #ccc; padding: 15px; width: 180px; text-align: center;">
+      <h4 style="margin: 0 0 10px 0;">Pending Follow-Ups</h4>
+      <span id="kpi-followups" style="font-size: 1.8em; font-weight: bold;">0</span>
+    </div>
+  </div>
+
+  <h3>Sales Pipeline Chart</h3>
+  <div style="width: 600px; height: 320px; border: 1px solid #ccc; padding: 15px;">
+    <canvas id="pipelineChart"></canvas>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      await checkSession();
+      loadKPIs();
+      loadChart();
+    });
+
+    async function loadKPIs() {
+      try {
+        const res = await fetch('/api/dashboard/stats');
+        if (!res.ok) return;
+        const data = await res.json();
+        document.getElementById('kpi-customers').innerText = data.totalCustomers;
+        document.getElementById('kpi-leads').innerText = data.openLeads;
+        document.getElementById('kpi-opportunities').innerText = data.openOpportunities;
+        document.getElementById('kpi-pipeline').innerText = Number(data.totalPipelineValue).toLocaleString();
+        document.getElementById('kpi-followups').innerText = data.pendingFollowups;
+      } catch (err) {}
+    }
+
+    async function loadChart() {
+      try {
+        const res = await fetch('/api/dashboard/chart');
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const labels = data.map(item => item.stage);
+        const amounts = data.map(item => item.totalAmount);
+
+        const ctx = document.getElementById('pipelineChart').getContext('2d');
+        new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: 'Total Pipeline Value ($)',
+              data: amounts,
+              backgroundColor: ['#4285F4', '#34A853', '#FBBC05', '#EA4335', '#9E9E9E'],
+              borderWidth: 1
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              y: {
+                beginAtZero: true
+              }
+            }
+          }
+        });
+      } catch (err) {}
+    }
+  </script>
+</body>
+</html>

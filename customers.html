@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AcxiomCRM - Customer Management</title>
+</head>
+<body style="font-family: sans-serif; margin: 20px;">
+  <div id="navbar"></div>
+
+  <h2>Customer Management</h2>
+  <hr>
+
+  <div id="page-alert" style="display:none;"></div>
+
+  <div style="display: flex; gap: 30px;">
+    <div style="border: 1px solid #ccc; padding: 20px; width: 320px; height: fit-content;">
+      <h3 id="form-title">Create New Customer</h3>
+      <div id="cust-form-alert" style="display:none;"></div>
+      <form id="customer-form" onsubmit="saveCustomer(event)">
+        <input type="hidden" id="cust-id">
+        <p>
+          <label>Customer Name *:</label><br>
+          <input type="text" id="cust-name" style="width: 100%;">
+        </p>
+        <p>
+          <label>Email *:</label><br>
+          <input type="text" id="cust-email" placeholder="user@example.com" style="width: 100%;">
+        </p>
+        <p>
+          <label>Phone * (10 digits):</label><br>
+          <input type="text" id="cust-phone" placeholder="9876543210" style="width: 100%;">
+        </p>
+        <p>
+          <label>Address:</label><br>
+          <textarea id="cust-address" rows="2" style="width: 100%;"></textarea>
+        </p>
+        <p>
+          <label>Status:</label><br>
+          <select id="cust-status" style="width: 100%;">
+            <option value="Active">Active</option>
+            <option value="Inactive">Inactive</option>
+          </select>
+        </p>
+        <p>
+          <label>Notes:</label><br>
+          <textarea id="cust-notes" rows="2" style="width: 100%;"></textarea>
+        </p>
+        <button type="submit" id="save-btn">Save Customer</button>
+        <button type="button" onclick="resetForm()">Cancel</button>
+      </form>
+    </div>
+
+    <div style="flex-grow: 1;">
+      <h3>Customer List</h3>
+      <table border="1" cellpadding="6" cellspacing="0" style="width: 100%; border-collapse: collapse;">
+        <thead>
+          <tr style="background: #e0e0e0;">
+            <th>ID</th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Phone</th>
+            <th>Status</th>
+            <th>Assigned Owner</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="customer-tbody">
+          <tr><td colspan="7">Loading customers...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const phoneRegex = /^\d{10}$/;
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      await checkSession();
+      loadCustomers();
+    });
+
+    async function loadCustomers() {
+      try {
+        const res = await fetch('/api/customers');
+        if (!res.ok) return;
+        const customers = await res.json();
+
+        const tbody = document.getElementById('customer-tbody');
+        if (customers.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7">No customers found.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = customers.map(c => `
+          <tr>
+            <td>${c.id}</td>
+            <td><strong>${escapeHtml(c.name)}</strong></td>
+            <td>${escapeHtml(c.email)}</td>
+            <td>${escapeHtml(c.phone)}</td>
+            <td>${escapeHtml(c.status)}</td>
+            <td>${escapeHtml(c.owner_name || 'N/A')}</td>
+            <td>
+              <button onclick="editCustomer(${c.id})">Edit</button>
+              <button onclick="deleteCustomer(${c.id})">Delete</button>
+            </td>
+          </tr>
+        `).join('');
+      } catch (err) {}
+    }
+
+    function validateCustomerForm() {
+      clearAlert('cust-form-alert');
+      const name = document.getElementById('cust-name').value.trim();
+      const email = document.getElementById('cust-email').value.trim();
+      const phone = document.getElementById('cust-phone').value.trim();
+
+      if (!name) {
+        showAlert('cust-form-alert', 'Customer Name is required.', true);
+        return false;
+      }
+
+      if (!email || !emailRegex.test(email)) {
+        showAlert('cust-form-alert', 'Enter a valid email address (e.g. user@example.com).', true);
+        return false;
+      }
+
+      if (!phone || !phoneRegex.test(phone)) {
+        showAlert('cust-form-alert', 'Enter a valid 10-digit phone number.', true);
+        return false;
+      }
+
+      return true;
+    }
+
+    async function saveCustomer(e) {
+      e.preventDefault();
+      
+      if (!validateCustomerForm()) {
+        return;
+      }
+
+      const id = document.getElementById('cust-id').value;
+      const payload = {
+        name: document.getElementById('cust-name').value.trim(),
+        email: document.getElementById('cust-email').value.trim(),
+        phone: document.getElementById('cust-phone').value.trim(),
+        address: document.getElementById('cust-address').value.trim(),
+        status: document.getElementById('cust-status').value,
+        notes: document.getElementById('cust-notes').value.trim()
+      };
+
+      const url = id ? `/api/customers/${id}` : '/api/customers';
+      const method = id ? 'PUT' : 'POST';
+
+      try {
+        const res = await fetch(url, {
+          method: method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          showAlert('cust-form-alert', data.error || 'Failed to save customer', true);
+        } else {
+          showAlert('page-alert', data.message, false);
+          resetForm();
+          loadCustomers();
+        }
+      } catch (err) {
+        showAlert('cust-form-alert', 'Network error saving customer', true);
+      }
+    }
+
+    async function editCustomer(id) {
+      clearAlert('cust-form-alert');
+      const res = await fetch(`/api/customers/${id}`);
+      if (!res.ok) return;
+      const c = await res.json();
+
+      document.getElementById('cust-id').value = c.id;
+      document.getElementById('cust-name').value = c.name;
+      document.getElementById('cust-email').value = c.email;
+      document.getElementById('cust-phone').value = c.phone;
+      document.getElementById('cust-address').value = c.address || '';
+      document.getElementById('cust-status').value = c.status || 'Active';
+      document.getElementById('cust-notes').value = c.notes || '';
+
+      document.getElementById('form-title').innerText = `Edit Customer #${c.id}`;
+      document.getElementById('save-btn').innerText = 'Update Customer';
+    }
+
+    async function deleteCustomer(id) {
+      if (!confirm('Are you sure you want to delete this customer?')) return;
+      clearAlert('page-alert');
+
+      const res = await fetch(`/api/customers/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showAlert('page-alert', data.error || 'Failed to delete customer', true);
+      } else {
+        showAlert('page-alert', data.message, false);
+        loadCustomers();
+      }
+    }
+
+    function resetForm() {
+      document.getElementById('customer-form').reset();
+      document.getElementById('cust-id').value = '';
+      document.getElementById('form-title').innerText = 'Create New Customer';
+      document.getElementById('save-btn').innerText = 'Save Customer';
+      clearAlert('cust-form-alert');
+    }
+  </script>
+</body>
+</html>

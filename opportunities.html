@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AcxiomCRM - Opportunity Management</title>
+</head>
+<body style="font-family: sans-serif; margin: 20px;">
+  <div id="navbar"></div>
+
+  <h2>Opportunity Management</h2>
+  <hr>
+
+  <div id="page-alert" style="display:none;"></div>
+
+  <div style="display: flex; gap: 30px;">
+    <div style="border: 1px solid #ccc; padding: 20px; width: 340px; height: fit-content;">
+      <h3 id="form-title">Create New Opportunity</h3>
+      <div id="opp-form-alert" style="display:none;"></div>
+      <form id="opp-form" onsubmit="saveOpportunity(event)">
+        <input type="hidden" id="opp-id">
+        <p>
+          <label>Opportunity Name *:</label><br>
+          <input type="text" id="opp-name" style="width: 100%;">
+        </p>
+        <p>
+          <label>Customer *:</label><br>
+          <select id="opp-customer" style="width: 100%;"></select>
+        </p>
+        <p>
+          <label>Stage:</label><br>
+          <select id="opp-stage" style="width: 100%;">
+            <option value="Qualification">Qualification</option>
+            <option value="Proposal">Proposal</option>
+            <option value="Negotiation">Negotiation</option>
+            <option value="Won">Won</option>
+            <option value="Lost">Lost</option>
+          </select>
+        </p>
+        <p>
+          <label>Amount ($) * (Must be > 0):</label><br>
+          <input type="number" step="0.01" id="opp-amount" style="width: 100%;">
+        </p>
+        <p>
+          <label>Probability (%) * (0 to 100):</label><br>
+          <input type="number" id="opp-probability" min="0" max="100" style="width: 100%;">
+        </p>
+        <p>
+          <label>Expected Close Date *:</label><br>
+          <input type="date" id="opp-close-date" style="width: 100%;">
+        </p>
+        <p>
+          <label>Notes:</label><br>
+          <textarea id="opp-notes" rows="2" style="width: 100%;"></textarea>
+        </p>
+        <button type="submit" id="save-btn">Save Opportunity</button>
+        <button type="button" onclick="resetForm()">Cancel</button>
+      </form>
+    </div>
+
+    <div style="flex-grow: 1;">
+      <h3>Opportunity Pipeline</h3>
+      <table border="1" cellpadding="6" cellspacing="0" style="width: 100%; border-collapse: collapse;">
+        <thead>
+          <tr style="background: #e0e0e0;">
+            <th>ID</th>
+            <th>Name</th>
+            <th>Customer</th>
+            <th>Stage</th>
+            <th>Amount ($)</th>
+            <th>Probability (%)</th>
+            <th>Close Date</th>
+            <th>Owner</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="opp-tbody">
+          <tr><td colspan="9">Loading opportunities...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      await checkSession();
+      loadCustomerDropdown();
+      loadOpportunities();
+    });
+
+    async function loadCustomerDropdown() {
+      const res = await fetch('/api/customers');
+      if (!res.ok) return;
+      const customers = await res.json();
+      const select = document.getElementById('opp-customer');
+      select.innerHTML = customers.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+    }
+
+    async function loadOpportunities() {
+      try {
+        const res = await fetch('/api/opportunities');
+        if (!res.ok) return;
+        const opps = await res.json();
+
+        const tbody = document.getElementById('opp-tbody');
+        if (opps.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="9">No opportunities found.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = opps.map(o => `
+          <tr>
+            <td>${o.id}</td>
+            <td><strong>${escapeHtml(o.name)}</strong></td>
+            <td>${escapeHtml(o.customer_name || 'N/A')}</td>
+            <td>${escapeHtml(o.stage)}</td>
+            <td>$${Number(o.amount).toLocaleString()}</td>
+            <td>${o.probability}%</td>
+            <td>${escapeHtml(o.expected_close_date)}</td>
+            <td>${escapeHtml(o.owner_name || 'N/A')}</td>
+            <td>
+              <button onclick="editOpportunity(${o.id})">Edit</button>
+              <button onclick="deleteOpportunity(${o.id})">Delete</button>
+            </td>
+          </tr>
+        `).join('');
+      } catch (err) {}
+    }
+
+    function validateOpportunityForm() {
+      clearAlert('opp-form-alert');
+      const name = document.getElementById('opp-name').value.trim();
+      const customer_id = document.getElementById('opp-customer').value;
+      const amountVal = document.getElementById('opp-amount').value;
+      const probVal = document.getElementById('opp-probability').value;
+      const closeDate = document.getElementById('opp-close-date').value;
+      const stage = document.getElementById('opp-stage').value;
+
+      if (!name) {
+        showAlert('opp-form-alert', 'Opportunity Name is required.', true);
+        return false;
+      }
+
+      if (!customer_id) {
+        showAlert('opp-form-alert', 'Customer is required.', true);
+        return false;
+      }
+
+      const numAmount = Number(amountVal);
+      if (amountVal === '' || isNaN(numAmount) || numAmount <= 0) {
+        showAlert('opp-form-alert', 'Opportunity Amount must be greater than 0.', true);
+        return false;
+      }
+
+      const numProb = Number(probVal);
+      if (probVal === '' || isNaN(numProb) || numProb < 0 || numProb > 100) {
+        showAlert('opp-form-alert', 'Probability must be between 0 and 100.', true);
+        return false;
+      }
+
+      if (!closeDate) {
+        showAlert('opp-form-alert', 'Expected Close Date is required.', true);
+        return false;
+      }
+
+      const todayStr = new Date().toISOString().split('T')[0];
+      const isActive = !['Won', 'Lost'].includes(stage);
+
+      if (isActive && closeDate < todayStr) {
+        showAlert('opp-form-alert', 'Expected Close Date cannot be in the past for an active opportunity.', true);
+        return false;
+      }
+
+      return true;
+    }
+
+    async function saveOpportunity(e) {
+      e.preventDefault();
+
+      if (!validateOpportunityForm()) {
+        return;
+      }
+
+      const id = document.getElementById('opp-id').value;
+      const payload = {
+        name: document.getElementById('opp-name').value.trim(),
+        customer_id: document.getElementById('opp-customer').value,
+        stage: document.getElementById('opp-stage').value,
+        amount: Number(document.getElementById('opp-amount').value),
+        probability: Number(document.getElementById('opp-probability').value),
+        expected_close_date: document.getElementById('opp-close-date').value,
+        notes: document.getElementById('opp-notes').value.trim()
+      };
+
+      const url = id ? `/api/opportunities/${id}` : '/api/opportunities';
+      const method = id ? 'PUT' : 'POST';
+
+      try {
+        const res = await fetch(url, {
+          method: method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          showAlert('opp-form-alert', data.error || 'Failed to save opportunity', true);
+        } else {
+          showAlert('page-alert', data.message, false);
+          resetForm();
+          loadOpportunities();
+        }
+      } catch (err) {
+        showAlert('opp-form-alert', 'Error saving opportunity', true);
+      }
+    }
+
+    async function editOpportunity(id) {
+      clearAlert('opp-form-alert');
+      const res = await fetch('/api/opportunities');
+      if (!res.ok) return;
+      const opps = await res.json();
+      const o = opps.find(x => x.id === id);
+      if (!o) return;
+
+      document.getElementById('opp-id').value = o.id;
+      document.getElementById('opp-name').value = o.name;
+      document.getElementById('opp-customer').value = o.customer_id;
+      document.getElementById('opp-stage').value = o.stage;
+      document.getElementById('opp-amount').value = o.amount;
+      document.getElementById('opp-probability').value = o.probability;
+      document.getElementById('opp-close-date').value = o.expected_close_date;
+      document.getElementById('opp-notes').value = o.notes || '';
+
+      document.getElementById('form-title').innerText = `Edit Opportunity #${o.id}`;
+      document.getElementById('save-btn').innerText = 'Update Opportunity';
+    }
+
+    async function deleteOpportunity(id) {
+      if (!confirm('Delete opportunity?')) return;
+      const res = await fetch(`/api/opportunities/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) {
+        showAlert('page-alert', data.error, true);
+      } else {
+        showAlert('page-alert', data.message, false);
+        loadOpportunities();
+      }
+    }
+
+    function resetForm() {
+      document.getElementById('opp-form').reset();
+      document.getElementById('opp-id').value = '';
+      document.getElementById('form-title').innerText = 'Create New Opportunity';
+      document.getElementById('save-btn').innerText = 'Save Opportunity';
+      clearAlert('opp-form-alert');
+    }
+  </script>
+</body>
+</html>

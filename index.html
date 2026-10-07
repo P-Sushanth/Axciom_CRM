@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AcxiomCRM - Login / Register</title>
+</head>
+<body style="font-family: sans-serif; margin: 40px;">
+  <h2>AcxiomCRM</h2>
+  <hr>
+
+  <div id="alert-box" style="display:none;"></div>
+
+  <div style="display: flex; gap: 40px;">
+    <div style="border: 1px solid #ccc; padding: 20px; width: 350px;">
+      <h3>Login</h3>
+      <form id="login-form" onsubmit="handleLogin(event)">
+        <p>
+          <label>Email:</label><br>
+          <input type="email" id="login-email" required style="width: 100%;">
+        </p>
+        <p>
+          <label>Password:</label><br>
+          <input type="password" id="login-password" required style="width: 100%;">
+        </p>
+        <button type="submit">Log In</button>
+      </form>
+
+      <hr style="margin-top: 20px;">
+      <p style="font-size: 0.9em; color: #555;">
+        <strong>Demo Accounts:</strong><br>
+        • Admin: admin@acxiom.com / Admin123!<br>
+        • Manager: manager@acxiom.com / Manager123!<br>
+        • Sales Exec: sales@acxiom.com / Sales123!
+      </p>
+    </div>
+
+    <div style="border: 1px solid #ccc; padding: 20px; width: 350px;">
+      <h3>Register Test User</h3>
+      <form id="register-form" onsubmit="handleRegister(event)">
+        <p>
+          <label>Full Name:</label><br>
+          <input type="text" id="reg-name" required style="width: 100%;">
+        </p>
+        <p>
+          <label>Email:</label><br>
+          <input type="email" id="reg-email" required style="width: 100%;">
+        </p>
+        <p>
+          <label>Password:</label><br>
+          <input type="password" id="reg-password" minlength="6" required style="width: 100%;">
+        </p>
+        <p>
+          <label>Role:</label><br>
+          <select id="reg-role" style="width: 100%;">
+            <option value="SalesExecutive">SalesExecutive</option>
+            <option value="Manager">Manager</option>
+            <option value="Admin">Admin</option>
+          </select>
+        </p>
+        <button type="submit">Register</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    fetch('/api/auth/me').then(res => {
+      if (res.ok) window.location.href = 'dashboard.html';
+    });
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      clearAlert('alert-box');
+      const email = document.getElementById('login-email').value;
+      const password = document.getElementById('login-password').value;
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showAlert('alert-box', data.error || 'Login failed', true);
+        } else {
+          window.location.href = 'dashboard.html';
+        }
+      } catch (err) {
+        showAlert('alert-box', 'Network error during login', true);
+      }
+    }
+
+    async function handleRegister(e) {
+      e.preventDefault();
+      clearAlert('alert-box');
+      const name = document.getElementById('reg-name').value;
+      const email = document.getElementById('reg-email').value;
+      const password = document.getElementById('reg-password').value;
+      const role = document.getElementById('reg-role').value;
+
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email, password, role })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showAlert('alert-box', data.error || 'Registration failed', true);
+        } else {
+          showAlert('alert-box', data.message + ' Please log in now.', false);
+          document.getElementById('register-form').reset();
+        }
+      } catch (err) {
+        showAlert('alert-box', 'Network error during registration', true);
+      }
+    }
+  </script>
+</body>
+</html>
